@@ -76,7 +76,7 @@ func TestParsePmsetZeroWhileEstimating(t *testing.T) {
 }
 
 func TestFromMacTimes(t *testing.T) {
-	in, err := fromMac(readFixture(t, "pmset/charging.txt"))
+	in, err := fromMac(readFixture(t, "pmset/charging.txt"), nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -84,7 +84,7 @@ func TestFromMacTimes(t *testing.T) {
 		t.Errorf("charging: remaining=%s to_full=%s", fmtPtr(in.TimeRemainingMin), fmtPtr(in.TimeToFullMin))
 	}
 
-	in, err = fromMac(readFixture(t, "pmset/discharging.txt"))
+	in, err = fromMac(readFixture(t, "pmset/discharging.txt"), nil)
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -8,9 +8,14 @@ import (
 )
 
 func readSystem() (*Info, error) {
-	out, err := exec.Command("/usr/bin/pmset", "-g", "batt").Output()
+	pmset, err := exec.Command("/usr/bin/pmset", "-g", "batt").Output()
 	if err != nil {
 		return nil, fmt.Errorf("pmset: %w", err)
 	}
-	return fromMac(out)
+	// ioreg only adds detail; without it batt still has pmset's basics.
+	ioreg, err := exec.Command("/usr/sbin/ioreg", "-rn", "AppleSmartBattery", "-a").Output()
+	if err != nil {
+		ioreg = nil
+	}
+	return fromMac(pmset, ioreg)
 }
