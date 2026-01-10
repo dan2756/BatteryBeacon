@@ -96,9 +96,48 @@ func TestNoBattery(t *testing.T) {
 	}
 }
 
+func TestSingleValues(t *testing.T) {
+	fakeBattery(t, sample(), nil)
+	for cmd, want := range map[string]string{
+		"percent": "87\n",
+		"state":   "charging\n",
+		"time":    "1:12\n",
+		"health":  "91\n",
+	} {
+		code, out, errOut := runBatt(cmd)
+		if code != 0 || out != want {
+			t.Errorf("batt %s: exit %d, got %q, want %q (stderr %q)", cmd, code, out, want, errOut)
+		}
+	}
+}
+
+func TestFormat(t *testing.T) {
+	fakeBattery(t, sample(), nil)
+	code, out, _ := runBatt("--format", "{percent}% {state} {time}")
+	if code != 0 || out != "87% charging 1:12\n" {
+		t.Errorf("exit %d, got %q", code, out)
+	}
+}
+
+func TestBadFormatIsUsageError(t *testing.T) {
+	// A bad template is reported before the battery is read, so it is a
+	// usage error even on a machine without a battery.
+	fakeBattery(t, nil, battery.ErrNoBattery)
+	code, _, errOut := runBatt("--format", "{nope}")
+	if code != 2 || !strings.Contains(errOut, "unknown field {nope}") {
+		t.Errorf("exit %d, stderr %q", code, errOut)
+	}
+}
+
 func TestUsageErrors(t *testing.T) {
 	fakeBattery(t, sample(), nil)
-	for _, args := range [][]string{{"--bogus"}, {"extra"}} {
+	for _, args := range [][]string{
+		{"--bogus"},
+		{"extra"},
+		{"percent", "state"},
+		{"--json", "percent"},
+		{"--json", "--format", "{percent}"},
+	} {
 		if code, _, _ := runBatt(args...); code != 2 {
 			t.Errorf("%v: exit %d, want 2", args, code)
 		}
