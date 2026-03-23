@@ -96,6 +96,53 @@ Values the platform doesn't report print as an empty string. Write `{{` and
 set -g status-right '#(batt --format "{percent}%% {time}")'
 ```
 
+## Hooks: `batt watch`
+
+`batt watch` polls the battery and runs shell commands when something
+changes:
+
+```sh
+batt watch \
+  --below 20 'notify "battery low: $BATT_PERCENT%"' \
+  --below 8  'pmset sleepnow' \
+  --above 80 'notify "unplug"' \
+  --on-plug  'notify "charging"' \
+  --on-unplug 'brightness 0.6' \
+  --on-full  'notify "fully charged"' \
+  -i 60s
+```
+
+| Option | Runs when |
+| --- | --- |
+| `--below N CMD` | the charge drops to N% or lower (repeatable) |
+| `--above N CMD` | the charge rises to N% or higher (repeatable) |
+| `--on-plug CMD` | the charger is connected |
+| `--on-unplug CMD` | the charger is disconnected |
+| `--on-full CMD` | the battery is fully charged |
+| `-i, --interval DUR` | time between readings: `30s`, `5m`, or bare seconds (default `60s`) |
+| `-v, --verbose` | log every reading and hook to stderr |
+
+Each threshold fires **once per crossing**. It re-arms only after the charge
+moves 2 points back, so a battery hovering around 20% doesn't fire
+`--below 20` over and over; it has to climb to 22% first. Thresholds and
+`--on-full` also fire on the first reading if they already hold (starting
+`batt watch` at 15% runs the `--below 20` hook straight away);
+`--on-plug`/`--on-unplug` only fire on a change.
+
+Hooks run one at a time with `/bin/sh -c`, inherit batt's stdout and
+stderr, and get:
+
+| Variable | Value |
+| --- | --- |
+| `BATT_EVENT` | `below`, `above`, `plug`, `unplug` or `full` |
+| `BATT_PERCENT` | charge level, e.g. `19` |
+| `BATT_STATE` | `charging`, `discharging`, `charged` or `not charging` |
+| `BATT_POWER_SOURCE` | `ac` or `battery` |
+| `BATT_THRESHOLD` | the level that fired, for `below`/`above` |
+
+A hook that fails is logged and watching continues. `batt watch` exits 0 on
+Ctrl-C or SIGTERM, and 1 straight away if there's no battery.
+
 ## Exit status
 
 | Code | Meaning |

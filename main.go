@@ -29,6 +29,8 @@ Usage:
   batt state                 charging, discharging, charged or not charging
   batt time                  H:MM until empty (or until full while charging)
   batt health                capacity vs. design, e.g. 91
+  batt watch [options]       run commands on low/high charge, plug, unplug
+                             (see 'batt watch -h')
 
 Options:
   --json                     print JSON instead of a summary
@@ -60,6 +62,10 @@ func main() {
 }
 
 func run(args []string, stdout, stderr io.Writer) int {
+	if len(args) > 0 && args[0] == "watch" {
+		return runWatch(args[1:], stdout, stderr)
+	}
+
 	fs := flag.NewFlagSet("batt", flag.ContinueOnError)
 	fs.SetOutput(io.Discard)
 	jsonOut := fs.Bool("json", false, "")
