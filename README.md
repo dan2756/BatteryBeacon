@@ -99,17 +99,25 @@ set -g status-right '#(batt --format "{percent}%% {time}")'
 ## Hooks: `batt watch`
 
 `batt watch` polls the battery and runs shell commands when something
-changes:
+changes. On Linux:
 
 ```sh
 batt watch \
-  --below 20 'notify "battery low: $BATT_PERCENT%"' \
-  --below 8  'pmset sleepnow' \
-  --above 80 'notify "unplug"' \
-  --on-plug  'notify "charging"' \
-  --on-unplug 'brightness 0.6' \
-  --on-full  'notify "fully charged"' \
+  --below 20 'notify-send "Battery low" "$BATT_PERCENT% left"' \
+  --below 5  'systemctl suspend' \
+  --above 80 'notify-send "Battery at $BATT_PERCENT%" "You can unplug now"' \
+  --on-full  'notify-send "Fully charged"' \
   -i 60s
+```
+
+On macOS:
+
+```sh
+batt watch \
+  --below 15 'osascript -e "display notification \"$BATT_PERCENT% left\" with title \"Battery low\""' \
+  --below 5  'pmset sleepnow' \
+  --on-unplug 'say "running on battery"' \
+  -i 30s
 ```
 
 | Option | Runs when |
@@ -141,16 +149,68 @@ stderr, and get:
 | `BATT_THRESHOLD` | the level that fired, for `below`/`above` |
 
 A hook that fails is logged and watching continues. `batt watch` exits 0 on
-Ctrl-C or SIGTERM, and 1 straight away if there's no battery.
+Ctrl-C, SIGTERM or SIGHUP, and 1 straight away if there's no battery. A hook
+still running then is stopped along with everything it started: its process
+group gets SIGTERM, and whatever is left 5 seconds later is killed.
+
+To keep it running on Linux, a systemd user unit works well (`$$` and `%%`
+are systemd's escapes for `$` and `%`):
+
+```ini
+# ~/.config/systemd/user/batt-watch.service
+[Unit]
+Description=Battery hooks
+
+[Service]
+ExecStart=%h/go/bin/batt watch --below 15 'notify-send "Battery low" "$${BATT_PERCENT}%%"'
+Restart=on-failure
+
+[Install]
+WantedBy=default.target
+```
+
+```sh
+systemctl --user enable --now batt-watch
+```
 
 ## Exit status
 
 | Code | Meaning |
 | --- | --- |
 | 0 | success |
-| 1 | no battery found (desktop, VM, CI) or the battery couldn't be read |
+| 1 | no battery found (desktop, VM, CI), the battery couldn't be read, or output couldn't be written |
 | 2 | bad usage, e.g. an unknown template field |
+
+## Environment
+
+| Variable | Effect |
+| --- | --- |
+| `BATTERY_DIR` | Linux only: read batteries from this directory instead of `/sys/class/power_supply`. It can also point straight at one battery, e.g. `/sys/class/power_supply/BAT1`. Handy for testing against a copy of sysfs. |
+
+## Platform notes
+
+**macOS.** The charge level, state and time estimate come from
+`pmset -g batt`, so they match the menu bar. Cycle count, capacities,
+temperature, voltage and amperage come from
+`ioreg -rn AppleSmartBattery -a`; both Apple silicon and Intel layouts are
+understood. When Optimized Battery Charging or a charge limit holds the
+battery (`pmset` says `AC attached; not charging`), the state is
+`not charging` and there's no time estimate. `condition` is `Normal` or
+`Service Recommended`, from the battery's permanent-failure flag. Desktops
+print `no battery found`.
+
+**Linux.** batt uses the first battery in `/sys/class/power_supply`, skipping
+empty bays and the batteries of wireless mice and keyboards. Both kinds of
+battery driver are supported: `energy_*`/`power_now` (most ThinkPads) and
+`charge_*`/`current_now` (many Dell and HP laptops). For energy-reporting
+batteries, mAh figures are computed at `voltage_min_design`. Time estimates
+are worked out from the current draw. Whether you're on AC comes from the
+charger's `online` flag, or from the battery status if there's no charger
+entry. `temperature_c` and `condition` are only filled in if the driver
+exposes `temp` and `health`, which many laptops don't.
+
+**Elsewhere.** Other systems get a clear "not supported" error.
 
 ## License
 
-MIT
+MIT. See [LICENSE](LICENSE).

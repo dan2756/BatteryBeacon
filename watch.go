@@ -11,7 +11,6 @@ import (
 	"os/signal"
 	"strconv"
 	"strings"
-	"syscall"
 	"time"
 
 	"github.com/dan2756/batt/internal/battery"
@@ -58,15 +57,15 @@ type watchConfig struct {
 func runWatch(args []string, stdout, stderr io.Writer) int {
 	cfg, err := parseWatchArgs(args)
 	if errors.Is(err, flag.ErrHelp) {
-		fmt.Fprint(stdout, watchUsage)
-		return 0
+		_, err = fmt.Fprint(stdout, watchUsage)
+		return checkWrite(stderr, err)
 	}
 	if err != nil {
 		fmt.Fprintf(stderr, "batt watch: %v\nRun 'batt watch -h' for usage.\n", err)
 		return 2
 	}
 
-	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	ctx, stop := signal.NotifyContext(context.Background(), stopSignals()...)
 	defer stop()
 	if err := watchLoop(ctx, cfg, readBattery, shellHook(stdout, stderr), stderr); err != nil {
 		fmt.Fprintf(stderr, "batt: %v\n", err)
@@ -227,14 +226,15 @@ func watchLoop(ctx context.Context, cfg watchConfig, read func() (*battery.Info,
 }
 
 // shellHook runs hooks with /bin/sh, one at a time, with their output going
-// to stdout and stderr.
+// to stdout and stderr. A hook still running when ctx is done is stopped
+// along with everything it started.
 func shellHook(stdout, stderr io.Writer) hookFunc {
 	return func(ctx context.Context, ev watch.Event) error {
 		cmd := exec.CommandContext(ctx, "/bin/sh", "-c", ev.Command)
 		cmd.Env = append(os.Environ(), hookEnv(ev)...)
 		cmd.Stdout = stdout
 		cmd.Stderr = stderr
-		return cmd.Run()
+		return runHook(cmd)
 	}
 }
 

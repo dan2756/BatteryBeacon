@@ -69,18 +69,19 @@ func run(args []string, stdout, stderr io.Writer) int {
 	fs := flag.NewFlagSet("batt", flag.ContinueOnError)
 	fs.SetOutput(io.Discard)
 	jsonOut := fs.Bool("json", false, "")
-	format := fs.String("format", "", "")
+	var format *string // nil unless --format is given, even as ''
+	fs.Func("format", "", func(s string) error { format = &s; return nil })
 	showVersion := fs.Bool("version", false, "")
 	if err := fs.Parse(args); err != nil {
 		if errors.Is(err, flag.ErrHelp) {
-			fmt.Fprint(stdout, usage)
-			return 0
+			_, err = fmt.Fprint(stdout, usage)
+			return checkWrite(stderr, err)
 		}
 		return usageError(stderr, err.Error())
 	}
 	if *showVersion {
-		fmt.Fprintln(stdout, "batt", versionString())
-		return 0
+		_, err := fmt.Fprintln(stdout, "batt", versionString())
+		return checkWrite(stderr, err)
 	}
 
 	var tmpl *render.Template
@@ -92,11 +93,11 @@ func run(args []string, stdout, stderr io.Writer) int {
 		if !ok {
 			return usageError(stderr, fmt.Sprintf("unknown command %q", fs.Arg(0)))
 		}
-		if *jsonOut || *format != "" {
+		if *jsonOut || format != nil {
 			return usageError(stderr, fmt.Sprintf("%s takes no options", fs.Arg(0)))
 		}
 		tmpl, _ = render.ParseTemplate("{" + field + "}")
-	case *format != "":
+	case format != nil:
 		if *jsonOut {
 			return usageError(stderr, "--json and --format can't be combined")
 		}
@@ -113,16 +114,23 @@ func run(args []string, stdout, stderr io.Writer) int {
 	}
 	switch {
 	case tmpl != nil:
-		fmt.Fprintln(stdout, tmpl.Execute(info))
+		_, err = fmt.Fprintln(stdout, tmpl.Execute(info))
 	case *jsonOut:
 		enc := json.NewEncoder(stdout)
 		enc.SetIndent("", "  ")
-		if err := enc.Encode(info); err != nil {
-			fmt.Fprintf(stderr, "batt: %v\n", err)
-			return 1
-		}
+		err = enc.Encode(info)
 	default:
-		fmt.Fprintln(stdout, render.Summary(info))
+		_, err = fmt.Fprintln(stdout, render.Summary(info))
+	}
+	return checkWrite(stderr, err)
+}
+
+// checkWrite returns the exit status after writing output: 0, or 1 with a
+// message if the write failed (on a full disk, say).
+func checkWrite(stderr io.Writer, err error) int {
+	if err != nil {
+		fmt.Fprintf(stderr, "batt: %v\n", err)
+		return 1
 	}
 	return 0
 }

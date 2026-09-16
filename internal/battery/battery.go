@@ -74,7 +74,11 @@ func ptr[T any](v T) *T { return &v }
 
 func round(v float64, places int) float64 {
 	p := math.Pow(10, float64(places))
-	return math.Round(v*p) / p
+	r := math.Round(v*p) / p
+	if r == 0 {
+		return 0 // not -0, which prints as "-0"
+	}
+	return r
 }
 
 func clampPercent(v int) int {

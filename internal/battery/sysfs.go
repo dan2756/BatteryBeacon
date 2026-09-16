@@ -16,7 +16,7 @@ const DefaultSysfsDir = "/sys/class/power_supply"
 
 // ReadSysfs reads the first battery under dir, a directory laid out like
 // /sys/class/power_supply (BAT0/, AC/, ...). dir may also be a single
-// battery's directory.
+// battery's directory. Both energy_* and charge_* batteries are supported.
 func ReadSysfs(dir string) (*Info, error) {
 	bat, err := findSysfsBattery(dir)
 	if err != nil {
@@ -135,11 +135,14 @@ func readSysfsBattery(d sysfsDir, charger *bool) (*Info, error) {
 		}
 	}
 
-	// Fill levels in µWh and the rate they change at in µW.
-	now := d.num("energy_now")
-	full := d.num("energy_full")
-	design := d.num("energy_full_design")
-	power := d.num("power_now")
+	// Fill levels and the rate they change at, in the battery's own units.
+	// Most report energy (µWh, with power_now in µW); some report charge
+	// (µAh, with current_now in µA) instead.
+	now, full, design, rate := d.num("energy_now"), d.num("energy_full"), d.num("energy_full_design"), d.num("power_now")
+	charge := now == nil && full == nil
+	if charge {
+		now, full, design, rate = d.num("charge_now"), d.num("charge_full"), d.num("charge_full_design"), d.num("current_now")
+	}
 	voltage := d.num("voltage_now") // µV
 	designVoltage := d.num("voltage_min_design")
 	if designVoltage == nil {
@@ -155,13 +158,18 @@ func readSysfsBattery(d sysfsDir, charger *bool) (*Info, error) {
 		return nil, fmt.Errorf("%s: battery reports no charge level", d)
 	}
 
-	// Convert energy to charge at the battery's design voltage, which is
+	// Energy converts to charge at the battery's design voltage, which is
 	// how the manufacturer's mAh rating is defined.
-	mAh := func(uWh *float64) *int {
-		if uWh == nil || designVoltage == nil || *designVoltage <= 0 {
+	mAh := func(level *float64) *int {
+		switch {
+		case level == nil:
+			return nil
+		case charge:
+			return ptr(int(math.Round(*level / 1000)))
+		case designVoltage == nil || *designVoltage <= 0:
 			return nil
 		}
-		return ptr(int(math.Round(*uWh / *designVoltage * 1000)))
+		return ptr(int(math.Round(*level / *designVoltage * 1000)))
 	}
 	in.CurrentCapacityMAh = mAh(now)
 	in.MaxCapacityMAh = mAh(full)
@@ -177,19 +185,29 @@ func readSysfsBattery(d sysfsDir, charger *bool) (*Info, error) {
 	if voltage != nil {
 		in.VoltageV = ptr(round(*voltage/1e6, 3))
 	}
-	if power != nil {
-		w := math.Abs(*power)
-		in.Watts = ptr(round(sign*w/1e6, 2))
-		if voltage != nil && *voltage > 0 {
-			in.AmperageMA = ptr(int(math.Round(sign * w / *voltage * 1000)))
+	if rate != nil {
+		// Some drivers report the rate as negative while discharging,
+		// others never do; take the sign from the status instead.
+		r := math.Abs(*rate)
+		if charge {
+			in.AmperageMA = ptr(int(math.Round(sign * r / 1000)))
+			if voltage != nil {
+				v := *voltage
+				in.Watts = ptr(round(sign*r*v/1e12, 2))
+			}
+		} else {
+			in.Watts = ptr(round(sign*r/1e6, 2))
+			if voltage != nil && *voltage > 0 {
+				in.AmperageMA = ptr(int(math.Round(sign * r / *voltage * 1000)))
+			}
 		}
-		if w > 0 && now != nil {
+		if r > 0 && now != nil {
 			switch in.State {
 			case Discharging:
-				in.TimeRemainingMin = ptr(int(math.Round(*now / w * 60)))
+				in.TimeRemainingMin = ptr(int(math.Round(*now / r * 60)))
 			case Charging:
 				if full != nil && *full > *now {
-					in.TimeToFullMin = ptr(int(math.Round((*full - *now) / w * 60)))
+					in.TimeToFullMin = ptr(int(math.Round((*full - *now) / r * 60)))
 				}
 			}
 		}

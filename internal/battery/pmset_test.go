@@ -29,6 +29,8 @@ func TestParsePmset(t *testing.T) {
 		{"discharging.txt", 64, Discharging, BatteryPower, ptr(277)},
 		{"no-estimate.txt", 71, Discharging, BatteryPower, nil},
 		{"charged.txt", 100, Charged, AC, ptr(0)},
+		{"not-charging.txt", 80, NotCharging, AC, nil},
+		{"finishing-charge.txt", 99, Charging, AC, ptr(6)},
 	}
 	for _, tt := range tests {
 		t.Run(tt.file, func(t *testing.T) {
@@ -105,4 +107,21 @@ func fmtPtr[T any](p *T) string {
 		return "nil"
 	}
 	return fmt.Sprint(*p)
+}
+
+func TestFromMacNotCharging(t *testing.T) {
+	// Plugged in with charging paused by Optimized Battery Charging or a
+	// charge limit: no time estimate either way.
+	in, err := fromMac(readFixture(t, "pmset/not-charging.txt"), nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertInfo(t, in, &Info{Percent: 80, State: NotCharging, PowerSource: AC})
+}
+
+func TestParsePmsetUnknownState(t *testing.T) {
+	out := "Now drawing from 'AC Power'\n -InternalBattery-0 (id=4653155)\t50%; recalibrating; (no estimate) present: true\n"
+	if _, err := parsePmset(out); err == nil {
+		t.Error("want an error for an unknown state")
+	}
 }

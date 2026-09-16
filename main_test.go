@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"errors"
 	"strings"
 	"testing"
 
@@ -119,6 +120,14 @@ func TestFormat(t *testing.T) {
 	}
 }
 
+func TestEmptyFormat(t *testing.T) {
+	// --format '' is an empty template, not a missing --format.
+	fakeBattery(t, sample(), nil)
+	if code, out, _ := runBatt("--format", ""); code != 0 || out != "\n" {
+		t.Errorf("exit %d, got %q, want an empty line", code, out)
+	}
+}
+
 func TestBadFormatIsUsageError(t *testing.T) {
 	// A bad template is reported before the battery is read, so it is a
 	// usage error even on a machine without a battery.
@@ -137,6 +146,8 @@ func TestUsageErrors(t *testing.T) {
 		{"percent", "state"},
 		{"--json", "percent"},
 		{"--json", "--format", "{percent}"},
+		{"--json", "--format", ""},
+		{"--format", "", "percent"},
 	} {
 		if code, _, _ := runBatt(args...); code != 2 {
 			t.Errorf("%v: exit %d, want 2", args, code)
@@ -144,5 +155,32 @@ func TestUsageErrors(t *testing.T) {
 	}
 	if code, out, _ := runBatt("-h"); code != 0 || !strings.Contains(out, "Usage:") {
 		t.Errorf("-h: exit %d, output %q", code, out)
+	}
+}
+
+type failingWriter struct{}
+
+func (failingWriter) Write([]byte) (int, error) {
+	return 0, errors.New("write /dev/stdout: no space left on device")
+}
+
+func TestWriteError(t *testing.T) {
+	// Output that can't be written is an error in every mode, as with
+	// batt > /dev/full.
+	fakeBattery(t, sample(), nil)
+	for _, args := range [][]string{
+		nil,
+		{"--json"},
+		{"--format", "{percent}"},
+		{"percent"},
+		{"-h"},
+		{"--version"},
+		{"watch", "-h"},
+	} {
+		var errOut bytes.Buffer
+		code := run(args, failingWriter{}, &errOut)
+		if code != 1 || !strings.Contains(errOut.String(), "no space left on device") {
+			t.Errorf("%v: exit %d, stderr %q", args, code, errOut.String())
+		}
 	}
 }

@@ -184,6 +184,47 @@ func TestShellHookEnv(t *testing.T) {
 	}
 }
 
+func TestShellHookStopsWholeHook(t *testing.T) {
+	if _, err := os.Stat("/bin/sh"); err != nil {
+		t.Skip("no /bin/sh")
+	}
+	// The hook's child cleans up on SIGTERM. Stopping batt must reach it,
+	// not just the /bin/sh running the hook, and wait for it to finish.
+	dir := t.TempDir()
+	t.Setenv("DIR", dir)
+	child := filepath.Join(dir, "child.sh")
+	script := `trap 'echo cleaned up > "$DIR/child"; exit' TERM; : > "$DIR/ready"; sleep 10 & wait`
+	if err := os.WriteFile(child, []byte(script), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	ev := watch.Event{Name: watch.Full, Command: `sh "$DIR/child.sh"; echo ran on > "$DIR/hook"`}
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	done := make(chan error, 1)
+	go func() { done <- shellHook(nil, nil)(ctx, ev) }()
+	for start := time.Now(); ; time.Sleep(10 * time.Millisecond) {
+		if _, err := os.Stat(filepath.Join(dir, "ready")); err == nil {
+			break
+		}
+		if time.Since(start) > 5*time.Second {
+			t.Fatal("hook didn't start")
+		}
+	}
+	cancel()
+	select {
+	case <-done:
+	case <-time.After(10 * time.Second):
+		t.Fatal("hook still running 10s after being stopped")
+	}
+	if got, _ := os.ReadFile(filepath.Join(dir, "child")); string(got) != "cleaned up\n" {
+		t.Errorf("hook's child wrote %q, want it to clean up on SIGTERM", got)
+	}
+	if _, err := os.Stat(filepath.Join(dir, "hook")); err == nil {
+		t.Error("hook ran on after being stopped")
+	}
+}
+
 func TestWatchUsage(t *testing.T) {
 	code, out, _ := runBatt("watch", "-h")
 	if code != 0 || !strings.Contains(out, "BATT_PERCENT") {

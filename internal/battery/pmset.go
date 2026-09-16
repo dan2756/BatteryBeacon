@@ -82,12 +82,19 @@ func parsePmsetBattery(line string, st *pmsetStatus) error {
 	}
 
 	switch strings.ToLower(fields[0]) {
-	case "charging":
+	case "charging", "finishing charge":
 		st.State = Charging
 	case "discharging":
 		st.State = Discharging
 	case "charged":
 		st.State = Charged
+	case "ac attached":
+		// "87%; AC attached; not charging": plugged in but holding, because
+		// of Optimized Battery Charging or a charge limit. There's no time
+		// estimate in this form.
+		st.State = NotCharging
+		st.PowerSource = AC
+		return nil
 	default:
 		return fmt.Errorf("pmset: unrecognized battery state %q", fields[0])
 	}
