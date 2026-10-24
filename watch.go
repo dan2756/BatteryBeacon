@@ -232,7 +232,9 @@ func watchLoop(ctx context.Context, cfg watchConfig, read func() (*battery.Info,
 func shellHook(stdout, stderr io.Writer) hookFunc {
 	return func(ctx context.Context, ev watch.Event) error {
 		cmd := exec.CommandContext(ctx, "/bin/sh", "-c", ev.Command)
-		cmd.Env = append(os.Environ(), hookEnv(ev)...)
+		// A BATT_THRESHOLD already in the environment would otherwise
+		// show up in plug, unplug, and full hooks, which do not set one.
+		cmd.Env = append(dropHookEnv(os.Environ()), hookEnv(ev)...)
 		cmd.Stdout = stdout
 		cmd.Stderr = stderr
 		return runHook(cmd)
@@ -250,4 +252,19 @@ func hookEnv(ev watch.Event) []string {
 		env = append(env, "BATT_THRESHOLD="+strconv.Itoa(ev.Threshold))
 	}
 	return env
+}
+
+// dropHookEnv removes the variables hookEnv sets, so a value inherited from
+// the parent cannot stand in for one this event does not set.
+func dropHookEnv(env []string) []string {
+	out := make([]string, 0, len(env))
+	for _, e := range env {
+		name, _, _ := strings.Cut(e, "=")
+		switch name {
+		case "BATT_EVENT", "BATT_PERCENT", "BATT_STATE", "BATT_POWER_SOURCE", "BATT_THRESHOLD":
+			continue
+		}
+		out = append(out, e)
+	}
+	return out
 }
