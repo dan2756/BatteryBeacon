@@ -148,7 +148,7 @@ stderr, and get:
 | `BATT_PERCENT` | charge level, e.g. `19` |
 | `BATT_STATE` | `charging`, `discharging`, `charged` or `not charging` |
 | `BATT_POWER_SOURCE` | `ac` or `battery` |
-| `BATT_THRESHOLD` | the level that fired, for `below`/`above` |
+| `BATT_THRESHOLD` | the level that fired, for `below`/`above`; unset for other events |
 
 A hook that fails is logged and watching continues. `batt watch` exits 0 on
 Ctrl-C, SIGTERM or SIGHUP, and 1 straight away if there's no battery. A hook

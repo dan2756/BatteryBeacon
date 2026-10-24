@@ -184,6 +184,52 @@ func TestShellHookEnv(t *testing.T) {
 	}
 }
 
+func TestShellHookDropsStaleEnv(t *testing.T) {
+	if _, err := os.Stat("/bin/sh"); err != nil {
+		t.Skip("no /bin/sh")
+	}
+	// A parent (or an outer batt watch) may already have exported these.
+	// The hook must see this event's values, and BATT_THRESHOLD must be
+	// unset when the event is not a threshold. Unrelated variables stay.
+	t.Setenv("BATT_EVENT", "stale")
+	t.Setenv("BATT_PERCENT", "1")
+	t.Setenv("BATT_STATE", "charged")
+	t.Setenv("BATT_POWER_SOURCE", "ac")
+	t.Setenv("BATT_THRESHOLD", "15")
+	t.Setenv("BATT_OTHER", "keep")
+
+	out := filepath.Join(t.TempDir(), "env")
+	t.Setenv("OUT", out)
+	ev := watch.Event{
+		Name:    watch.Unplug,
+		Command: `printf '%s|%s|%s|%s|[%s]|%s' "$BATT_EVENT" "$BATT_PERCENT" "$BATT_STATE" "$BATT_POWER_SOURCE" "$BATT_THRESHOLD" "$BATT_OTHER" > "$OUT"`,
+		Reading: watch.Reading{Percent: 64, State: battery.Discharging, Source: battery.BatteryPower},
+	}
+	if err := shellHook(nil, nil)(context.Background(), ev); err != nil {
+		t.Fatal(err)
+	}
+	got, err := os.ReadFile(out)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if want := "unplug|64|discharging|battery|[]|keep"; string(got) != want {
+		t.Errorf("hook saw %q, want %q", got, want)
+	}
+
+	ev.Name = watch.Below
+	ev.Threshold = 20
+	if err := shellHook(nil, nil)(context.Background(), ev); err != nil {
+		t.Fatal(err)
+	}
+	got, err = os.ReadFile(out)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if want := "below|64|discharging|battery|[20]|keep"; string(got) != want {
+		t.Errorf("threshold hook saw %q, want %q", got, want)
+	}
+}
+
 func TestShellHookStopsWholeHook(t *testing.T) {
 	if _, err := os.Stat("/bin/sh"); err != nil {
 		t.Skip("no /bin/sh")
