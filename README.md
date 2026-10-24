@@ -206,9 +206,11 @@ empty bays and the batteries of wireless mice and keyboards. Both kinds of
 battery driver are supported: `energy_*`/`power_now` (most ThinkPads) and
 `charge_*`/`current_now` (many Dell and HP laptops). For energy-reporting
 batteries, mAh figures are computed at `voltage_min_design`. Time estimates
-are worked out from the current draw. Whether you're on AC comes from the
-charger's `online` flag, or from the battery status if there's no charger
-entry. `temperature_c` and `condition` are only filled in if the driver
+are worked out from the current draw. Whether you're on AC comes from a
+charger's `online` flag. Mains, UPS, USB (including USB-C, USB-PD, and
+BrickID), and wireless supplies all count; a supply with no `online` file
+does not. If nothing reports one, the source is inferred from the battery
+status. `temperature_c` and `condition` are only filled in if the driver
 exposes `temp` and `health`, which many laptops don't.
 
 **Elsewhere.** Other systems get a clear "not supported" error.

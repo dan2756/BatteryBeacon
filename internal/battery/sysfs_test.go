@@ -128,6 +128,61 @@ func TestReadSysfsBatteryDir(t *testing.T) {
 	}
 }
 
+func writeSupply(t *testing.T, root, name string, files map[string]string) {
+	t.Helper()
+	dir := filepath.Join(root, name)
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	for k, v := range files {
+		if err := os.WriteFile(filepath.Join(dir, k), []byte(v+"\n"), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+}
+
+func TestReadSysfsChargerTypes(t *testing.T) {
+	// Types other than Mains/USB/USB_C/USB_PD still publish online, and a
+	// battery can be Discharging or Full while that flag is what decides
+	// the source. A supply with no online file is not a charger.
+	tests := []struct {
+		name   string
+		kind   string
+		online string // empty: do not create the file
+		status string
+		source PowerSource
+		state  State
+	}{
+		{"usb-pd-drp online", "USB_PD_DRP", "1", "Discharging", AC, Discharging},
+		{"usb-pd-drp unplugged", "USB_PD_DRP", "0", "Full", BatteryPower, Charged},
+		{"wireless online", "Wireless", "1", "Not charging", AC, NotCharging},
+		{"ups online", "UPS", "1", "Discharging", AC, Discharging},
+		{"brickid online", "BrickID", "1", "Charging", AC, Charging},
+		{"usb-dcp unplugged", "USB_DCP", "0", "Full", BatteryPower, Charged},
+		{"usb without online", "USB", "", "Charging", AC, Charging},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			dir := t.TempDir()
+			writeSupply(t, dir, "BAT0", map[string]string{
+				"type": "Battery", "status": tt.status, "capacity": "80", "present": "1",
+			})
+			port := map[string]string{"type": tt.kind}
+			if tt.online != "" {
+				port["online"] = tt.online
+			}
+			writeSupply(t, dir, "port", port)
+			in, err := ReadSysfs(dir)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if in.PowerSource != tt.source || in.State != tt.state {
+				t.Errorf("source = %q, state = %q; want %q, %q", in.PowerSource, in.State, tt.source, tt.state)
+			}
+		})
+	}
+}
+
 func TestReadSysfsNoBattery(t *testing.T) {
 	for _, dir := range []string{
 		filepath.Join("testdata", "sysfs", "desktop"), // AC adapter and a wireless mouse

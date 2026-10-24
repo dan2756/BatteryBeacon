@@ -77,28 +77,45 @@ func findSysfsBattery(dir string) (sysfsDir, error) {
 	return "", ErrNoBattery
 }
 
-// chargerOnline reports whether a charger under dir is online, or nil if
-// there is no charger to ask.
+// chargerType reports whether t is a Linux power_supply type that delivers
+// external power: every kernel type except Battery and Unknown.
+func chargerType(t string) bool {
+	switch t {
+	case "Mains", "UPS", "USB", "USB_DCP", "USB_CDP", "USB_ACA",
+		"USB_C", "USB_PD", "USB_PD_DRP", "BrickID", "Wireless":
+		return true
+	default:
+		return false
+	}
+}
+
+// chargerOnline reports whether an external supply under dir is online.
+// It returns nil when nothing there can say: no charger, or only supplies
+// with no online file. Callers then infer the source from battery status.
+// One supply that is online wins over any that are not.
 func chargerOnline(dir string) *bool {
 	entries, err := os.ReadDir(dir)
 	if err != nil {
 		return nil
 	}
-	var online *bool
+	var offline *bool
 	for _, e := range entries {
 		d := sysfsDir(filepath.Join(dir, e.Name()))
-		switch d.str("type") {
-		case "Mains", "USB", "USB_C", "USB_PD":
-		default:
+		if !chargerType(d.str("type")) {
 			continue
 		}
-		on := d.str("online") == "1"
-		if on {
+		// A supply with no online file is not a charger we can ask.
+		// Treating a missing file as 0 would mark the machine unplugged.
+		switch d.str("online") {
+		case "1":
+			on := true
 			return &on
+		case "0":
+			off := false
+			offline = &off
 		}
-		online = &on
 	}
-	return online
+	return offline
 }
 
 func readSysfsBattery(d sysfsDir, charger *bool) (*Info, error) {
