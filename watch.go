@@ -33,8 +33,9 @@ Options:
   -h, --help           show this help
 
 Each threshold fires once per crossing and re-arms after the charge moves 2
-points back (to 22% for --below 20). Thresholds and --on-full also fire on
-the first reading if they already hold.
+points back (to 22% for --below 20). Within 2 points of 0% or 100% it
+re-arms at that end of the scale instead (--below 99 re-arms at 100%).
+Thresholds and --on-full also fire on the first reading if they already hold.
 
 Hooks run with /bin/sh -c and get these environment variables:
   BATT_EVENT         below, above, plug, unplug or full

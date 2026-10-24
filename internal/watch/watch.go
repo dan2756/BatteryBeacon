@@ -74,8 +74,9 @@ func (e Event) String() string {
 //
 // Thresholds and OnFull are levels: each fires when its condition becomes
 // true, including on the first reading, and then not again until it has
-// been false (for thresholds, by Rearm points). OnPlug and OnUnplug are
-// edges and fire only when the power source changes between readings.
+// been false (for thresholds, by Rearm points, or at 0% or 100% when that
+// margin would fall off the scale). OnPlug and OnUnplug are edges and fire
+// only when the power source changes between readings.
 type Watcher struct {
 	hooks     Hooks
 	armed     []bool
@@ -146,9 +147,21 @@ func (t Threshold) reached(pct int) bool {
 	return pct <= t.Level
 }
 
+// rearmed reports whether pct has moved far enough back from t for t to
+// fire again. The margin is Rearm points, but a charge level only runs
+// from 0 to 100, so a threshold closer to an end than that re-arms there:
+// --below 99 re-arms at 100%, not at an unreachable 101%. An always-true
+// threshold (--below 100, --above 0) never re-arms, because no reading
+// makes it false.
 func (t Threshold) rearmed(pct int) bool {
 	if t.Above {
-		return pct <= t.Level-Rearm
+		if pct <= t.Level-Rearm {
+			return true
+		}
+		return t.Level > 0 && pct <= 0
 	}
-	return pct >= t.Level+Rearm
+	if pct >= t.Level+Rearm {
+		return true
+	}
+	return t.Level < 100 && pct >= 100
 }
