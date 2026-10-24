@@ -145,6 +145,40 @@ func TestFull(t *testing.T) {
 	}
 }
 
+func TestRearmAtScaleEnds(t *testing.T) {
+	// --below 99 can't climb two points past 99. It must re-arm at 100%,
+	// and a dip that never gets back there must not fire again.
+	w := New(Hooks{Thresholds: []Threshold{{Level: 99, Command: "low"}}})
+	readings := percents(battery.Discharging, battery.BatteryPower, 100, 99, 98, 99, 100, 99)
+	idx, _ := fires(w, readings)
+	if want := []int{1, 5}; !reflect.DeepEqual(idx, want) {
+		t.Errorf("--below 99 fired at %v, want %v", idx, want)
+	}
+
+	// --above 1 can't fall to -1. It re-arms at 0%.
+	w = New(Hooks{Thresholds: []Threshold{{Above: true, Level: 1, Command: "up"}}})
+	readings = percents(battery.Charging, battery.AC, 0, 1, 2, 1, 0, 1)
+	idx, _ = fires(w, readings)
+	if want := []int{1, 5}; !reflect.DeepEqual(idx, want) {
+		t.Errorf("--above 1 fired at %v, want %v", idx, want)
+	}
+
+	// --below 100 and --above 0 are true for every real charge level, so
+	// they fire on the first reading and then stay spent.
+	w = New(Hooks{Thresholds: []Threshold{{Level: 100, Command: "always"}}})
+	readings = percents(battery.Discharging, battery.BatteryPower, 100, 50, 100, 0)
+	idx, _ = fires(w, readings)
+	if want := []int{0}; !reflect.DeepEqual(idx, want) {
+		t.Errorf("--below 100 fired at %v, want %v", idx, want)
+	}
+	w = New(Hooks{Thresholds: []Threshold{{Above: true, Level: 0, Command: "always"}}})
+	readings = percents(battery.Charging, battery.AC, 0, 50, 0, 100)
+	idx, _ = fires(w, readings)
+	if want := []int{0}; !reflect.DeepEqual(idx, want) {
+		t.Errorf("--above 0 fired at %v, want %v", idx, want)
+	}
+}
+
 func TestEmpty(t *testing.T) {
 	if !(Hooks{}).Empty() {
 		t.Error("zero Hooks should be empty")

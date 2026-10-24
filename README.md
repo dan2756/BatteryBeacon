@@ -132,10 +132,12 @@ batt watch \
 
 Each threshold fires **once per crossing**. It re-arms only after the charge
 moves 2 points back, so a battery hovering around 20% doesn't fire
-`--below 20` over and over; it has to climb to 22% first. Thresholds and
-`--on-full` also fire on the first reading if they already hold (starting
-`batt watch` at 15% runs the `--below 20` hook straight away);
-`--on-plug`/`--on-unplug` only fire on a change.
+`--below 20` over and over; it has to climb to 22% first. A threshold
+within 2 points of 0% or 100% re-arms at that end of the scale instead
+(`--below 99` re-arms at 100%, `--above 1` at 0%), since the charge can't
+move any further. Thresholds and `--on-full` also fire on the first reading
+if they already hold (starting `batt watch` at 15% runs the `--below 20`
+hook straight away); `--on-plug`/`--on-unplug` only fire on a change.
 
 Hooks run one at a time with `/bin/sh -c`, inherit batt's stdout and
 stderr, and get:
