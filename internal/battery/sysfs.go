@@ -162,7 +162,9 @@ func readSysfsBattery(d sysfsDir, charger *bool) (*Info, error) {
 	}
 	voltage := d.num("voltage_now") // µV
 	designVoltage := d.num("voltage_min_design")
-	if designVoltage == nil {
+	// 0 is not a design voltage; some drivers publish the file before they
+	// know it. Fall back to the live pack voltage, same as a missing file.
+	if designVoltage == nil || *designVoltage <= 0 {
 		designVoltage = voltage
 	}
 
