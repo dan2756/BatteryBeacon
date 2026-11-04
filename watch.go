@@ -6,6 +6,7 @@ import (
 	"flag"
 	"fmt"
 	"io"
+	"math"
 	"os"
 	"os/exec"
 	"os/signal"
@@ -173,9 +174,20 @@ func parseLevel(s string) (int, error) {
 func parseInterval(s string) (time.Duration, error) {
 	d, err := time.ParseDuration(s)
 	if err != nil {
-		n, nerr := strconv.Atoi(s)
+		// Bare seconds. ParseInt, not Atoi: a second count is turned into an
+		// int64 nanosecond duration, and on 32-bit platforms Atoi rejects
+		// values that still fit in that duration.
+		n, nerr := strconv.ParseInt(s, 10, 64)
 		if nerr != nil {
 			return 0, fmt.Errorf("%q is not a duration like 30s or 5m", s)
+		}
+		if n < 1 {
+			return 0, fmt.Errorf("%s is too short; use at least 1s", s)
+		}
+		// time.Duration is nanoseconds. A bare second count past this wraps
+		// and becomes a short or negative interval instead of the one asked for.
+		if n > int64(math.MaxInt64/int64(time.Second)) {
+			return 0, fmt.Errorf("%s is too long", s)
 		}
 		d = time.Duration(n) * time.Second
 	}
