@@ -86,6 +86,37 @@ func TestReadSysfsNegativeCurrent(t *testing.T) {
 	}
 }
 
+func TestReadSysfsZeroDesignVoltage(t *testing.T) {
+	// voltage_min_design of 0 must not wipe out mAh. 10 V and 10 Wh is 1000 mAh.
+	dir := t.TempDir()
+	for name, v := range map[string]string{
+		"type":               "Battery",
+		"status":             "Discharging",
+		"capacity":           "50",
+		"energy_now":         "10000000",
+		"energy_full":        "20000000",
+		"energy_full_design": "25000000",
+		"voltage_min_design": "0",
+		"voltage_now":        "10000000",
+		"power_now":          "5000000",
+	} {
+		if err := os.WriteFile(filepath.Join(dir, name), []byte(v+"\n"), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	in, err := ReadSysfs(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !equalPtr(in.CurrentCapacityMAh, ptr(1000)) || !equalPtr(in.MaxCapacityMAh, ptr(2000)) || !equalPtr(in.DesignCapacityMAh, ptr(2500)) {
+		t.Errorf("mAh current=%s max=%s design=%s, want 1000, 2000, 2500",
+			fmtPtr(in.CurrentCapacityMAh), fmtPtr(in.MaxCapacityMAh), fmtPtr(in.DesignCapacityMAh))
+	}
+	if !equalPtr(in.VoltageV, ptr(10.0)) || !equalPtr(in.HealthPercent, ptr(80.0)) {
+		t.Errorf("voltage=%s health=%s, want 10 and 80", fmtPtr(in.VoltageV), fmtPtr(in.HealthPercent))
+	}
+}
+
 func TestReadSysfsNoDraw(t *testing.T) {
 	// Drivers briefly report a zero rate while discharging; watts must come
 	// out as 0, not -0.
