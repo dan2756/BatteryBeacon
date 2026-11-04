@@ -60,6 +60,12 @@ func TestParseWatchArgsDefaults(t *testing.T) {
 	if err != nil || cfg.interval != 90*time.Second {
 		t.Errorf("bare seconds: interval = %v, err = %v", cfg.interval, err)
 	}
+	// Largest bare second count that still fits in a nanosecond duration.
+	const maxSeconds = int64(9223372036)
+	cfg, err = parseWatchArgs([]string{"--interval", "9223372036", "--on-full", "x"})
+	if err != nil || cfg.interval != time.Duration(maxSeconds)*time.Second {
+		t.Errorf("max seconds: interval = %v, err = %v", cfg.interval, err)
+	}
 }
 
 func TestParseWatchArgsErrors(t *testing.T) {
@@ -76,6 +82,10 @@ func TestParseWatchArgsErrors(t *testing.T) {
 		{[]string{"--on-plug"}, "needs a command"},
 		{[]string{"--on-plug", "a", "--on-plug", "b"}, "more than once"},
 		{[]string{"--on-full", "x", "-i", "100ms"}, "too short"},
+		{[]string{"--on-full", "x", "-i", "0"}, "too short"},
+		{[]string{"--on-full", "x", "-i", "-5"}, "too short"},
+		{[]string{"--on-full", "x", "-i", "10000000000"}, "too long"},
+		{[]string{"--on-full", "x", "-i", "100000000000"}, "too long"},
 		{[]string{"--on-full", "x", "-i", "soon"}, "not a duration"},
 		{[]string{"--on-full", "x", "--verbose=yes"}, "doesn't take a value"},
 		{[]string{"--on-full", "x", "--every", "5m"}, "unknown option --every"},
