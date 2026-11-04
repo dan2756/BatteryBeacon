@@ -117,6 +117,9 @@ func parseWatchArgs(args []string) (watchConfig, error) {
 			if err != nil {
 				return cfg, err
 			}
+			if err := checkHookCommand(name, cmd); err != nil {
+				return cfg, err
+			}
 			cfg.hooks.Thresholds = append(cfg.hooks.Thresholds, watch.Threshold{
 				Above: key == "above", Level: level, Command: cmd,
 			})
@@ -127,6 +130,9 @@ func parseWatchArgs(args []string) (watchConfig, error) {
 			seen[key] = true
 			cmd, err := value("a command")
 			if err != nil {
+				return cfg, err
+			}
+			if err := checkHookCommand(name, cmd); err != nil {
 				return cfg, err
 			}
 			switch key {
@@ -160,6 +166,16 @@ func parseWatchArgs(args []string) (watchConfig, error) {
 		return cfg, errors.New("nothing to do: give at least one of --below, --above, --on-plug, --on-unplug or --on-full")
 	}
 	return cfg, nil
+}
+
+// checkHookCommand rejects a blank command. An empty --below still counts
+// as a hook, so watch would run forever and never do anything; an empty
+// --on-full is dropped later and the user only hears "nothing to do".
+func checkHookCommand(name, cmd string) error {
+	if strings.TrimSpace(cmd) == "" {
+		return fmt.Errorf("%s: command is empty", name)
+	}
+	return nil
 }
 
 func parseLevel(s string) (int, error) {
