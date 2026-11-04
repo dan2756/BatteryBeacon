@@ -214,6 +214,63 @@ func TestReadSysfsChargerTypes(t *testing.T) {
 	}
 }
 
+func TestReadSysfsEmptyBay(t *testing.T) {
+	// An empty bay is present=0 and must not hide the battery in the next slot.
+	dir := t.TempDir()
+	writeSupply(t, dir, "BAT0", map[string]string{
+		"type": "Battery", "status": "Discharging", "capacity": "10", "present": "0",
+	})
+	writeSupply(t, dir, "BAT1", map[string]string{
+		"type": "Battery", "status": "Discharging", "capacity": "64", "present": "1",
+	})
+	in, err := ReadSysfs(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if in.Percent != 64 {
+		t.Errorf("percent = %d, want 64 from BAT1", in.Percent)
+	}
+
+	only := t.TempDir()
+	writeSupply(t, only, "BAT0", map[string]string{
+		"type": "Battery", "status": "Full", "capacity": "100", "present": "0",
+	})
+	if _, err := ReadSysfs(only); !errors.Is(err, ErrNoBattery) {
+		t.Errorf("empty bay only: err = %v, want ErrNoBattery", err)
+	}
+}
+
+func TestReadSysfsUnknownStatus(t *testing.T) {
+	// "Unknown" is what some firmware reports while a charge threshold holds
+	// the pack on AC. On battery it means the pack is in use.
+	tests := []struct {
+		online string
+		state  State
+		source PowerSource
+	}{
+		{"1", NotCharging, AC},
+		{"0", Discharging, BatteryPower},
+	}
+	for _, tt := range tests {
+		t.Run("online="+tt.online, func(t *testing.T) {
+			dir := t.TempDir()
+			writeSupply(t, dir, "BAT0", map[string]string{
+				"type": "Battery", "status": "Unknown", "capacity": "80", "present": "1",
+			})
+			writeSupply(t, dir, "ADP1", map[string]string{
+				"type": "Mains", "online": tt.online,
+			})
+			in, err := ReadSysfs(dir)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if in.State != tt.state || in.PowerSource != tt.source || in.Percent != 80 {
+				t.Errorf("got %d%% %s on %s, want 80%% %s on %s", in.Percent, in.State, in.PowerSource, tt.state, tt.source)
+			}
+		})
+	}
+}
+
 func TestReadSysfsNoBattery(t *testing.T) {
 	for _, dir := range []string{
 		filepath.Join("testdata", "sysfs", "desktop"), // AC adapter and a wireless mouse
