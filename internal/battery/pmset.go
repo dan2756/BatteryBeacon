@@ -61,6 +61,11 @@ func parsePmset(out string) (*pmsetStatus, error) {
 func parsePmsetBattery(line string, st *pmsetStatus) error {
 	m := pmsetChargeRe.FindStringSubmatch(line)
 	if m == nil {
+		// An absent pack has no percentage. Older pmset prints
+		// " -InternalBattery-0 (removed)" for that.
+		if strings.Contains(line, "(removed)") {
+			return ErrNoBattery
+		}
 		return fmt.Errorf("pmset: can't parse %q", line)
 	}
 	pct, err := strconv.Atoi(m[1])
@@ -81,7 +86,14 @@ func parsePmsetBattery(line string, st *pmsetStatus) error {
 		fields[i] = strings.TrimSpace(fields[i])
 	}
 
-	switch strings.ToLower(fields[0]) {
+	// When battery health is not Good, pmset appends " (Health/Confidence)"
+	// with no extra semicolon. With no time estimate that sits on the state
+	// itself ("discharging (Fair/Fair)"); otherwise it follows "remaining".
+	state := strings.ToLower(fields[0])
+	if note := strings.Index(state, " ("); note >= 0 {
+		state = strings.TrimSpace(state[:note])
+	}
+	switch state {
 	case "charging", "finishing charge":
 		st.State = Charging
 	case "discharging":
