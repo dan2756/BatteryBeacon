@@ -125,3 +125,45 @@ func TestParsePmsetUnknownState(t *testing.T) {
 		t.Error("want an error for an unknown state")
 	}
 }
+
+func TestFromMacHealthNote(t *testing.T) {
+	// pmset appends " (Health/Confidence)" when health is not Good, and a
+	// failure message puts present: true on the following line.
+	out := "Now drawing from 'AC Power'\n" +
+		" -InternalBattery-0 (id=4653155)\t100%; charged; 0:00 remaining (Poor/Good)\n" +
+		"\tfailure: \"Permanent Battery Failure\" present: true\n"
+	in, err := fromMac([]byte(out), nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertInfo(t, in, &Info{Percent: 100, State: Charged, PowerSource: AC, TimeToFullMin: ptr(0)})
+
+	// With no time estimate the note is glued to the state word.
+	out = "Now drawing from 'Battery Power'\n" +
+		" -InternalBattery-0 (id=4653155)\t64%; discharging (Fair/Fair) present: true\n"
+	in, err = fromMac([]byte(out), nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertInfo(t, in, &Info{Percent: 64, State: Discharging, PowerSource: BatteryPower})
+
+	// The note after "not charging" must not disturb the AC-attached state.
+	out = "Now drawing from 'AC Power'\n" +
+		" -InternalBattery-0 (id=4653155)\t80%; AC attached; not charging (Fair/Fair) present: true\n"
+	in, err = fromMac([]byte(out), nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertInfo(t, in, &Info{Percent: 80, State: NotCharging, PowerSource: AC})
+}
+
+func TestParsePmsetRemoved(t *testing.T) {
+	for _, out := range []string{
+		"Now drawing from 'AC Power'\n -InternalBattery-0 (removed)\n",
+		"Now drawing from 'AC Power'\n -InternalBattery-0 (id=4653155)\t (removed)\n",
+	} {
+		if _, err := fromMac([]byte(out), nil); !errors.Is(err, ErrNoBattery) {
+			t.Errorf("%q: err = %v, want ErrNoBattery", out, err)
+		}
+	}
+}
