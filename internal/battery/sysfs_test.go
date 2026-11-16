@@ -240,6 +240,37 @@ func TestReadSysfsEmptyBay(t *testing.T) {
 	}
 }
 
+func TestReadSysfsCycleCount(t *testing.T) {
+	// -1 is ACPI's unknown (0xFFFFFFFF). 0 is a new battery.
+	for _, cycles := range []string{"-1", "0", "12"} {
+		t.Run("count="+cycles, func(t *testing.T) {
+			dir := t.TempDir()
+			writeSupply(t, dir, "BAT0", map[string]string{
+				"type": "Battery", "status": "Discharging", "capacity": "40",
+				"present": "1", "cycle_count": cycles,
+			})
+			in, err := ReadSysfs(dir)
+			if err != nil {
+				t.Fatal(err)
+			}
+			switch cycles {
+			case "-1":
+				if in.CycleCount != nil {
+					t.Errorf("cycle count = %d, want nil", *in.CycleCount)
+				}
+			case "0":
+				if !equalPtr(in.CycleCount, ptr(0)) {
+					t.Errorf("cycle count = %s, want 0", fmtPtr(in.CycleCount))
+				}
+			case "12":
+				if !equalPtr(in.CycleCount, ptr(12)) {
+					t.Errorf("cycle count = %s, want 12", fmtPtr(in.CycleCount))
+				}
+			}
+		})
+	}
+}
+
 func TestReadSysfsUnknownStatus(t *testing.T) {
 	// "Unknown" is what some firmware reports while a charge threshold holds
 	// the pack on AC. On battery it means the pack is in use.
