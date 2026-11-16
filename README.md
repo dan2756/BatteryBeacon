@@ -48,7 +48,7 @@ $ batt --json
 | `power_source` | `ac` or `battery` |
 | `time_remaining_min` | minutes until empty; `null` while charging or while the OS is still estimating |
 | `time_to_full_min` | minutes until full; `null` unless charging (0 once charged) |
-| `cycle_count` | charge cycles |
+| `cycle_count` | charge cycles, or `null` when unknown (Linux sysfs uses -1 for that) |
 | `design_capacity_mah` | capacity when new |
 | `max_capacity_mah` | capacity now |
 | `current_capacity_mah` | charge left |

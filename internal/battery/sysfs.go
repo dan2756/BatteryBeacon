@@ -235,7 +235,9 @@ func readSysfsBattery(d sysfsDir, charger *bool) (*Info, error) {
 		in.TimeToFullMin = ptr(0)
 	}
 
-	if c := d.num("cycle_count"); c != nil {
+	// ACPI stores an unknown cycle count as 0xFFFFFFFF, which sysfs prints
+	// as -1. That is not a count. Zero is a new battery and is kept.
+	if c := d.num("cycle_count"); c != nil && *c >= 0 {
 		in.CycleCount = ptr(int(*c))
 	}
 	if t := d.num("temp"); t != nil {
